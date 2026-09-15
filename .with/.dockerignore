@@ -1,0 +1,42 @@
+# Version control
+.git
+.gitignore
+
+# Dependencies
+node_modules
+vendor
+venv
+__pycache__
+
+# Build artifacts
+dist
+build
+*.pyc
+*.pyo
+
+# Test files
+js/*.test.js
+
+# Documentation
+README.md
+docs
+
+# IDE
+.vscode
+.idea
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs
+*.log
+
+# Misc
+coverage
+.cache
+tmp
+.with
+.knot

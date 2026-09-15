@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AxData 买卖时机分析面板</title>
+  <!-- ECharts 按需引入的依赖映射：echarts@5.5.1 内部裸导入 zrender 与 tslib，须由 import map 解析 -->
+  <script type="importmap">
+    {
+      "imports": {
+        "tslib": "https://cdn.jsdelivr.net/npm/tslib@2.3.0/tslib.es6.js",
+        "zrender/": "https://cdn.jsdelivr.net/npm/zrender@5.6.0/"
+      }
+    }
+  </script>
+  <!-- process 垫片：echarts/zrender npm 源码内含 process.env.NODE_ENV 守卫，
+       浏览器无此全局变量会抛 ReferenceError；经典脚本先于 module script 执行 -->
+  <script>
+    if (typeof window.process === 'undefined') {
+      window.process = { env: { NODE_ENV: 'production' } };
+    }
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdn.jsdelivr.net/npm/remixicon@4.5.0/fonts/remixicon.css" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css?v=20260915a">
+  <script>
+    // Tailwind 深色主题扩展配置
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            rise: '#ef4444',   // A股习惯：红涨
+            fall: '#22c55e',   // A股习惯：绿跌
+            panel: '#0f172a',
+            panel2: '#1e293b'
+          },
+          fontFamily: {
+            mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Consolas', 'monospace']
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="bg-slate-950 text-slate-200 min-h-screen flex flex-col antialiased">
+
+  <!-- 顶部导航 -->
+  <header class="sticky top-0 z-40 bg-slate-900/90 backdrop-blur border-b border-slate-800">
+    <div class="max-w-[1600px] mx-auto px-4 lg:px-6 h-14 flex items-center gap-3">
+      <a href="#/stock" class="flex items-center gap-2 shrink-0">
+        <span class="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center">
+          <i class="ri-line-chart-line text-white text-lg"></i>
+        </span>
+        <span class="font-bold text-slate-100 hidden sm:inline">AxData 时机面板</span>
+      </a>
+
+      <nav id="main-nav" class="flex items-center gap-1 overflow-x-auto flex-1 min-w-0 no-scrollbar">
+        <a href="#/stock" data-nav="/stock" class="nav-link"><i class="ri-candle-line"></i><span>个股分析</span></a>
+        <a href="#/scan" data-nav="/scan" class="nav-link"><i class="ri-radar-line"></i><span>自选扫描</span></a>
+        <a href="#/market" data-nav="/market" class="nav-link"><i class="ri-fire-line"></i><span>市场情绪</span></a>
+        <a href="#/backtest" data-nav="/backtest" class="nav-link"><i class="ri-history-line"></i><span>历史回验</span></a>
+      </nav>
+
+      <a href="#/config" id="conn-pill" class="shrink-0 flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-full bg-slate-800 border border-slate-700 hover:border-slate-500 transition-colors" title="服务连接状态，点击进入配置页">
+        <span id="conn-dot" class="w-2 h-2 rounded-full bg-slate-500"></span>
+        <span id="conn-text" class="text-slate-300">检测中</span>
+      </a>
+      <a href="#/config" class="shrink-0 w-9 h-9 flex items-center justify-center rounded-lg bg-slate-800 border border-slate-700 hover:border-slate-500 transition-colors" title="设置">
+        <i class="ri-settings-3-line text-slate-300"></i>
+      </a>
+    </div>
+  </header>
+
+  <!-- 路由挂载点 -->
+  <main id="app" class="flex-1 w-full max-w-[1600px] mx-auto px-4 lg:px-6 py-5 min-w-0">
+    <div id="view-root" class="w-full"></div>
+  </main>
+
+  <!-- 页脚 -->
+  <footer class="border-t border-slate-800 bg-slate-900/60 mt-6">
+    <div class="max-w-[1600px] mx-auto px-4 lg:px-6 py-3 flex flex-col items-center gap-1 text-center">
+      <p class="text-xs text-slate-500">数据来源：AxData · 仅供个人研究使用</p>
+      <p>由 <a href="https://with.woa.com/" style="color: #8A2BE2;" target="_blank">With</a> 通过自然语言生成</p>
+    </div>
+  </footer>
+
+  <!-- 全局 Toast 容器 -->
+  <div id="toast-root" class="fixed top-16 right-4 z-50 flex flex-col gap-2 items-end"></div>
+
+  <script type="module" src="js/main.js?v=20260915a"></script>
+</body>
+</html>
