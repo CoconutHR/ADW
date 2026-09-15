@@ -8,7 +8,7 @@
  * - 特色短线指标卡片（feature-cards 组件）
  */
 
-import { request, APIS } from '../api.js';
+import { request, APIS, klineAdjustParams } from '../api.js';
 import { normalizeKlines, normalizeSnapshot } from '../normalize.js';
 import { computeAll } from '../indicators.js';
 import { detectSignals, recentSignals, summarizeSignals } from '../signal.js';
@@ -19,8 +19,9 @@ import { getWatchlist, addWatch, removeWatch, getLastStock, setLastStock } from 
 import { toast, loadingHTML, errorHTML, emptyHTML, esc, fmtAmount, fmtNum } from '../ui.js';
 
 const PERIODS = [
-  { key: 'daily', label: '日线', api: APIS.klineDaily, params: { adjust: 'qfq' } },
-  { key: 'weekly', label: '周线', api: APIS.klineWeekly, params: { adjust: 'qfq' } },
+  { key: 'daily', label: '日线', api: APIS.klineDaily, params: klineAdjustParams() },
+  { key: 'weekly', label: '周线', api: APIS.klineWeekly, params: klineAdjustParams() },
+  // 分钟线历史较短、分红影响可忽略，且复权对盘口细节无意义，保持不复权
   { key: 'minute', label: '分钟线', api: APIS.klineMinute, params: { period: '5m', adjust: 'none' } },
 ];
 

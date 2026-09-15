@@ -8,7 +8,7 @@
  */
 
 import echarts from '../echarts.js';
-import { request, APIS } from '../api.js';
+import { request, APIS, klineAdjustParams } from '../api.js';
 import { normalizeKlines } from '../normalize.js';
 import { SIGNAL_LABELS, SIGNAL_TYPE_DIRECTIONS } from '../signal.js';
 import { runBacktest, bucketDistribution, MIN_SAMPLE_WARN, HOLD_MIN, HOLD_MAX } from '../backtest-engine.js';
@@ -254,7 +254,7 @@ async function runBacktestFlow(ctx, state) {
 
   try {
     // 拉取较长历史（回验需要足够样本；AxData 按实际可用返回）
-    const rows = await request(APIS.klineDaily, { code, adjust: 'qfq' });
+    const rows = await request(APIS.klineDaily, { code, ...klineAdjustParams() });
     const klines = normalizeKlines(rows);
 
     const res = runBacktest(klines, {

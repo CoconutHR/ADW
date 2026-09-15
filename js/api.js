@@ -10,6 +10,35 @@
 import { getConfig, saveConfig, isBaseUrlCustom } from './store.js';
 import { getDemoData } from './demo-data.js';
 
+/**
+ * 日/周线复权参数：固定使用「定点前复权」并以最新交易日为锚。
+ *
+ * 背景（实测结论，2026-09）：AxData 的 `adjust=qfq` 由上游 TDX 行情服务器计算，
+ * 该服务端采用「减法」——从原始价里逐笔扣减累计每股现金分红，而不是标准的乘法式
+ * 复权因子。后果是长历史、高分红个股的早期 K 线价格为负：
+ *   - 600519：6005 根日 K 中 3529 根为负（2001-08-27 ~ 2016-09-29），最负 -314.87
+ *   - 抽检 6 只个股，5 只受影响（000001 / 000858 / 601398 / 600036 / 600519）
+ *   - 即便为正也严重失真，例如 600519 在 2016-09-30 返回 6.25，标准前复权应为 241.33
+ * 判据：纯现金分红日的价格跳变精确等于每股分红（2023-2026 年 6 次事件误差 < 0.01 元），
+ * 即调整量是「减去」而非「乘以」。
+ *
+ * `adjust=fixed_qfq`（定点前复权，锚定最新交易日）走的是正确的乘法式实现：
+ * 实测其结果与用 XDXR 事件独立复算的标准前复权值完全一致（600519 在 2001-08-27
+ * 为 4.17，与独立复算一致；原始价 35.55），且抽检个股均无负值。故统一改用该模式。
+ *
+ * 注：anchor_date 仅在 adjust=fixed_qfq 时允许传入；传入晚于最后一根 K 线的日期时
+ * AxData 会自动收敛到最后一根，因此直接用当天日期即可。
+ */
+export function klineAdjustParams() {
+  const now = new Date();
+  const ymd = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, '0'),
+    String(now.getDate()).padStart(2, '0'),
+  ].join('');
+  return { adjust: 'fixed_qfq', anchor_date: ymd };
+}
+
 /** API 接口名注册表：与 AxData Provider Registry 真实接口一一对应（文档站 electkismet.github.io/AxData） */
 export const APIS = {
   klineDaily: 'stock_kline_daily_tdx',              // 日K线（参数：code, adjust, anchor_date）

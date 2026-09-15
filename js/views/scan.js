@@ -6,7 +6,7 @@
  * - 结果表：按综合评分/信号方向/涨跌幅排序筛选，点击行跳转个股详情
  */
 
-import { request, APIS } from '../api.js';
+import { request, APIS, klineAdjustParams } from '../api.js';
 import { normalizeKlines, normalizeSnapshot } from '../normalize.js';
 import { computeAll } from '../indicators.js';
 import { detectSignals, recentSignals, summarizeSignals } from '../signal.js';
@@ -190,7 +190,7 @@ async function startScan(ctx) {
 
   const scheduler = createScheduler(async (item) => {
     // 每只股票的完整分析管线（失败项由调度器标记 __error）
-    const rows = await request(APIS.klineDaily, { code: item.code, adjust: 'qfq' });
+    const rows = await request(APIS.klineDaily, { code: item.code, ...klineAdjustParams() });
     const klines = normalizeKlines(rows).slice(-120);
     if (!klines.length) throw new Error('无K线数据');
 

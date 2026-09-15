@@ -152,7 +152,7 @@ server {
 
 | 接口名 | 用途 | 关键参数 |
 | --- | --- | --- |
-| `stock_kline_daily_tdx` | 日K线（前复权） | `code`、`adjust: qfq`，返回全量历史，前端按需截取 |
+| `stock_kline_daily_tdx` | 日K线（前复权） | `code`、`adjust: fixed_qfq`、`anchor_date: 当天`，返回全量历史，前端按需截取 |
 | `stock_kline_weekly_tdx` | 周K线 | 同上 |
 | `stock_kline_minute_tdx` | 分钟K线（默认 5m） | `code`、`period: 5m`、`adjust: none` |
 | `stock_realtime_snapshot_tdx` | 实时快照 | `code` |
@@ -161,6 +161,8 @@ server {
 | `stock_theme_strength_rank_tdx` | 题材强度排行 | `scope: all` |
 
 对应 Provider 未安装时该板块展示「该数据源不可用」占位，不影响其他功能。接口契约以 AxData 文档站（electkismet.github.io/AxData/interfaces）为准，多余参数会被严格校验拒绝（400）。
+
+> **为什么用 `fixed_qfq` 而不是 `qfq`**：上游 TDX 行情服务器的 `qfq` 采用「减法式」调整（从原始价逐笔扣减累计每股现金分红），而非标准乘法式复权因子，导致长历史、高分红个股的早期 K 线价格为负——实测 600519 有 3529/6005 根日 K 为负（最负 -314.87），抽检 6 只个股中 5 只受影响，且正值区间同样失真（2016-09-30 返回 6.25，标准值 241.33）。`fixed_qfq` 走的是正确的乘法式实现，实测与用 XDXR 事件独立复算的标准前复权值完全一致。详见 `js/api.js` 中 `klineAdjustParams()` 的注释。
 
 ## 运行测试
 
