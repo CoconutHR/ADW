@@ -9,6 +9,7 @@
  */
 
 import { request, APIS, klineAdjustParams } from '../api.js';
+import { ensureNames, getName, resolveCode, stockLabel } from '../names.js';
 import { normalizeKlines, normalizeSnapshot } from '../normalize.js';
 import { computeAll } from '../indicators.js';
 import { detectSignals, recentSignals, summarizeSignals } from '../signal.js';
@@ -49,8 +50,15 @@ async function mount(ctx, codeParam) {
 
   ctx.container.innerHTML = buildSkeleton();
   bindStaticEvents(ctx, state);
+  renderWatchSelect(ctx, state);
 
   await loadStock(ctx, state);
+
+  // 名称目录就绪后补全标题与自选下拉（首屏渲染时目录可能尚未加载完）
+  ensureNames().then(() => {
+    renderWatchSelect(ctx, state);
+    updateChartTitle(ctx, state);
+  });
 
   ctx.onCleanup(() => {
     window.removeEventListener('resize', state._resizeHandler);
@@ -67,11 +75,12 @@ function buildSkeleton() {
       <div class="flex flex-wrap items-center gap-3">
         <div class="flex items-center gap-2">
           <div class="relative">
-            <input id="stock-input" class="field w-44 pl-8 font-mono" placeholder="输入6位代码" maxlength="6" spellcheck="false">
+            <input id="stock-input" class="field w-44 pl-8" placeholder="代码或名称" spellcheck="false">
             <i class="ri-search-line absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 text-sm"></i>
           </div>
           <button id="stock-search" class="btn btn-primary"><i class="ri-search-line"></i>查询</button>
         </div>
+        <select id="watch-select" class="field !w-auto !py-1.5 text-xs" title="从自选股快速切换"></select>
         <div id="period-tabs" class="flex items-center rounded-lg bg-slate-800 border border-slate-700 p-0.5">
           ${PERIODS.map(p => `<button data-period="${p.key}" class="px-3 py-1 text-xs rounded-md text-slate-400 transition-colors ${p.key === 'daily' ? 'bg-indigo-600 text-white' : 'hover:text-slate-200'}">${p.label}</button>`).join('')}
         </div>
@@ -120,13 +129,24 @@ function buildSkeleton() {
 function bindStaticEvents(ctx, state) {
   const $ = (id) => ctx.container.querySelector('#' + id);
 
-  const doSearch = () => {
+  // 查询：支持 6 位代码，也支持名称（由名称目录解析为代码）
+  const doSearch = async () => {
     const v = $('stock-input').value.trim();
-    if (!/^\d{6}$/.test(v)) { toast('请输入6位数字股票代码', 'warn'); return; }
-    location.hash = `#/stock/${v}`;
+    if (!v) return;
+    if (/^\d{6}$/.test(v)) { location.hash = `#/stock/${v}`; return; }
+    await ensureNames();
+    const code = resolveCode(v);
+    if (!code) { toast(`未找到「${v}」，可改用 6 位代码查询`, 'warn'); return; }
+    location.hash = `#/stock/${code}`;
   };
   $('stock-search').addEventListener('click', doSearch);
   $('stock-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(); });
+
+  // 自选下拉：选择后直接跳转
+  $('watch-select').addEventListener('change', (e) => {
+    const v = e.target.value;
+    if (v) location.hash = `#/stock/${v}`;
+  });
 
   // 周期切换
   $('period-tabs').addEventListener('click', (e) => {
@@ -152,20 +172,50 @@ function bindStaticEvents(ctx, state) {
 
   // 自选切换
   $('watch-toggle').addEventListener('click', () => {
+    const label = stockLabel(state.code, state.snapshot?.name);
     const list = getWatchlist();
     if (list.some(x => x.code === state.code)) {
       removeWatch(state.code);
-      toast(`已从自选移除 ${state.code}`, 'info');
+      toast(`已从自选移除 ${label}`, 'info');
     } else {
-      addWatch(state.code, state.snapshot?.name || state.code);
-      toast(`已加入自选 ${state.code}`, 'success');
+      addWatch(state.code, state.snapshot?.name || getName(state.code) || state.code);
+      toast(`已加入自选 ${label}`, 'success');
     }
     updateWatchBtn(ctx, state);
+    renderWatchSelect(ctx, state);
   });
 
   // 图表自适应
   state._resizeHandler = () => state._chart && state._chart.resize();
   window.addEventListener('resize', state._resizeHandler);
+}
+
+/** 图表标题：「名称 代码 · 周期」，名称目录未就绪时先只显示代码 */
+function updateChartTitle(ctx, state) {
+  const el = ctx.container.querySelector('#chart-title');
+  if (!el) return;
+  const periodDef = PERIODS.find(p => p.key === state.period);
+  el.textContent = `${stockLabel(state.code)} · ${periodDef ? periodDef.label : ''}`;
+}
+
+/** 自选股下拉：显示「名称 代码」，无自选时给出占位提示 */
+function renderWatchSelect(ctx, state) {
+  const sel = ctx.container.querySelector('#watch-select');
+  if (!sel) return;
+  const list = getWatchlist();
+
+  if (!list.length) {
+    sel.innerHTML = `<option value="">自选股（空）</option>`;
+    sel.disabled = true;
+    return;
+  }
+  sel.disabled = false;
+  sel.innerHTML = `<option value="">自选股…</option>` +
+    list.map(w => {
+      const label = stockLabel(w.code, w.name);
+      const selected = w.code === state.code ? ' selected' : '';
+      return `<option value="${esc(w.code)}"${selected}>${esc(label)}</option>`;
+    }).join('');
 }
 
 function updateWatchBtn(ctx, state) {
@@ -185,8 +235,8 @@ async function loadStock(ctx, state) {
 
   state.loading = true;
   state.error = null;
-  chartBox.innerHTML = loadingHTML(`正在拉取 ${state.code} ${periodDef.label}数据…`, '440px');
-  $('chart-title').textContent = `${state.code} · ${periodDef.label}`;
+  chartBox.innerHTML = loadingHTML(`正在拉取 ${stockLabel(state.code)} ${periodDef.label}数据…`, '440px');
+  updateChartTitle(ctx, state);
 
   // K 线（核心数据，失败则展示错误）
   try {
@@ -210,7 +260,7 @@ async function loadStock(ctx, state) {
     }
     // 侧栏与评分同步清空
     $('signal-list').innerHTML = emptyHTML('等待K线数据…');
-    renderScorePanel($('score-panel'), null, { code: state.code, reason: 'K线数据不可用' });
+    renderScorePanel($('score-panel'), null, { code: state.code, name: stockLabel(state.code), reason: 'K线数据不可用' });
     renderFeatureCards($('feature-cards'), state.code);
     return;
   }
@@ -239,7 +289,8 @@ async function loadStock(ctx, state) {
   renderChart(ctx, state);
   renderSignalList(ctx, state);
   updateWatchBtn(ctx, state);
-  renderScorePanel($('score-panel'), state, { code: state.code, feature: state.feature });
+  renderWatchSelect(ctx, state);
+  renderScorePanel($('score-panel'), state, { code: state.code, name: stockLabel(state.code), feature: state.feature });
   renderFeatureCards($('feature-cards'), state.code, state.feature);
 }
 
@@ -266,7 +317,7 @@ function renderSnapshotBar(ctx, state) {
 
   bar.innerHTML = `
     <div class="flex items-baseline gap-1 mr-3 shrink-0">
-      <span class="font-bold text-slate-100">${esc(s?.name || (state.feature && state.feature.name) || state.code)}</span>
+      <span class="font-bold text-slate-100">${esc(s?.name || (state.feature && state.feature.name) || getName(state.code) || state.code)}</span>
       <span class="text-xs text-slate-500 font-mono">${esc(state.code)}</span>
     </div>
     <div class="flex items-center gap-4 overflow-x-auto no-scrollbar flex-wrap">

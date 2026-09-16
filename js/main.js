@@ -7,6 +7,7 @@
 import { startRouter, registerRoute } from './router.js';
 import { getConfig, APP_VERSION } from './store.js';
 import { healthCheck } from './api.js';
+import { ensureNames } from './names.js';
 import { setConnStatus } from './ui.js';
 
 // 注册各页面视图
@@ -49,3 +50,7 @@ function initGlobalStatus() {
 console.info(`[AxData 时机面板] 当前版本 ${APP_VERSION}。若与最新发布不符，说明浏览器在用旧缓存或本地文件未同步，请强制刷新（Cmd/Ctrl+Shift+R）`);
 initGlobalStatus();
 startRouter();
+
+// 后台预热证券名称目录：AxData 的行情接口不返回证券名称，
+// 预热后各处即可显示「名称 代码」并支持按名称搜索（缓存 24 小时，失败静默）
+ensureNames();

@@ -46,6 +46,7 @@ export const APIS = {
   klineMinute: 'stock_kline_minute_tdx',            // 分钟K线（参数：code, period=1m/5m/15m/30m/60m, adjust）
   realtimeSnapshot: 'stock_realtime_snapshot_tdx',  // 实时快照（参数：code）
   spotFeature: 'stock_shortline_indicators_tdx',    // 短线指标（竞价昨比/开盘量比/开盘换手Z/开盘抢筹/流通市值Z）
+  stockCodes: 'stock_codes_tdx',                    // 全市场证券代码-名称表（无必填参数，用于名称补全与按名称搜索）
   limitLadder: 'stock_limit_ladder_tdx',            // 连板天梯（参数：count, scope, include_touched, topic_type）
   themeStrength: 'stock_theme_strength_rank_tdx',   // 题材强度排行（参数：count, scope, topic_type）
 };

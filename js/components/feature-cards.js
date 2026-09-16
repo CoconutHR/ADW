@@ -5,6 +5,7 @@
  */
 
 import { request, APIS } from '../api.js';
+import { stockLabel } from '../names.js';
 import { normalizeFeature } from '../normalize.js';
 import { esc, fmtNum } from '../ui.js';
 
@@ -51,11 +52,12 @@ function card(def, value) {
 export async function renderFeatureCards(el, code, featureRow = null) {
   if (!el) return;
 
+  const title = stockLabel(code);
   const skeleton = `
   <div class="card p-4">
     <div class="flex items-center justify-between mb-3">
       <h3 class="font-medium text-slate-200 text-sm flex items-center gap-1.5">
-        <i class="ri-flashlight-line text-amber-400"></i>AxData 特色短线指标 · ${esc(code || '')}
+        <i class="ri-flashlight-line text-amber-400"></i>AxData 特色短线指标 · ${esc(title)}
       </h3>
     </div>
     <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
@@ -82,7 +84,7 @@ export async function renderFeatureCards(el, code, featureRow = null) {
     <div class="card p-4">
       <div class="flex items-center justify-between mb-3">
         <h3 class="font-medium text-slate-200 text-sm flex items-center gap-1.5">
-          <i class="ri-flashlight-line text-amber-400"></i>AxData 特色短线指标 · ${esc(code || '')}
+          <i class="ri-flashlight-line text-amber-400"></i>AxData 特色短线指标 · ${esc(title)}
         </h3>
       </div>
       <div class="rounded-lg border border-dashed border-slate-700 bg-slate-900/40 p-6 text-center">
@@ -102,7 +104,7 @@ export async function renderFeatureCards(el, code, featureRow = null) {
   <div class="card p-4">
     <div class="flex items-center justify-between mb-3 flex-wrap gap-1">
       <h3 class="font-medium text-slate-200 text-sm flex items-center gap-1.5">
-        <i class="ri-flashlight-line text-amber-400"></i>AxData 特色短线指标 · ${esc(code || '')}
+        <i class="ri-flashlight-line text-amber-400"></i>AxData 特色短线指标 · ${esc(title)}
       </h3>
       ${f.updated ? `<span class="text-[10px] text-slate-600">更新于 ${esc(f.updated)}</span>` : ''}
     </div>

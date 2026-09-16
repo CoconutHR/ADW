@@ -9,10 +9,11 @@
 
 import echarts from '../echarts.js';
 import { request, APIS, klineAdjustParams } from '../api.js';
+import { ensureNames, getName, resolveCode, stockLabel, backfillWatchNames } from '../names.js';
 import { normalizeKlines } from '../normalize.js';
 import { SIGNAL_LABELS, SIGNAL_TYPE_DIRECTIONS } from '../signal.js';
 import { runBacktest, bucketDistribution, MIN_SAMPLE_WARN, HOLD_MIN, HOLD_MAX } from '../backtest-engine.js';
-import { getWatchlist, getLastStock } from '../store.js';
+import { getWatchlist, getLastStock, saveWatchlist } from '../store.js';
 import { toast, loadingHTML, emptyHTML, errorHTML, esc, fmtNum, fmtPct } from '../ui.js';
 
 /** 信号类型清单（按方向分组） */
@@ -61,6 +62,14 @@ export function registerBacktestView(registerRoute) {
     ctx.container.innerHTML = buildSkeleton(state);
     bindEvents(ctx, state);
 
+    // 名称目录就绪后补全自选快捷标签的名称
+    ensureNames().then(() => {
+      const list = getWatchlist();
+      if (backfillWatchNames(list)) saveWatchlist(list);
+      const holder = ctx.container.querySelector('#bt-watch-quick');
+      if (holder) holder.innerHTML = renderWatchQuick();
+    });
+
     ctx.onCleanup(() => {
       window.removeEventListener('resize', state._resizeHandler);
       if (state.chart) { state.chart.dispose(); state.chart = null; }
@@ -85,7 +94,7 @@ function buildSkeleton(state) {
         <div>
           <label class="block text-xs text-slate-500 mb-1.5">股票代码</label>
           <div class="relative">
-            <input id="bt-code" class="field pl-8 font-mono" value="${esc(state.params.code)}" maxlength="6" placeholder="6位数字" spellcheck="false">
+            <input id="bt-code" class="field pl-8" value="${esc(state.params.code)}" placeholder="代码或名称" spellcheck="false">
             <i class="ri-search-line absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 text-sm"></i>
           </div>
         </div>
@@ -159,8 +168,8 @@ function renderWatchQuick() {
   const list = getWatchlist().slice(0, 8);
   if (!list.length) return `<span class="text-xs text-slate-600">暂无自选（可在自选扫描页添加）</span>`;
   return list.map(w => `
-    <button data-quick-code="${esc(w.code)}" class="px-2 py-0.5 text-xs rounded-md border border-slate-800 bg-slate-900 text-slate-400 hover:text-indigo-300 hover:border-slate-600 transition-colors" title="回验 ${esc(w.name)}">
-      ${esc(w.name || w.code)}
+    <button data-quick-code="${esc(w.code)}" class="px-2 py-0.5 text-xs rounded-md border border-slate-800 bg-slate-900 text-slate-400 hover:text-indigo-300 hover:border-slate-600 transition-colors" title="回验 ${esc(stockLabel(w.code, w.name))}">
+      ${esc((w.name && w.name !== w.code) ? w.name : getName(w.code) || w.code)}
     </button>`).join('');
 }
 
@@ -232,8 +241,13 @@ async function runBacktestFlow(ctx, state) {
   if (state.running) { toast('回验进行中', 'info'); return; }
 
   // 收集参数
-  const code = $('bt-code').value.trim();
-  if (!/^\d{6}$/.test(code)) { toast('请输入6位数字股票代码', 'warn'); return; }
+  let code = $('bt-code').value.trim();
+  if (!/^\d{6}$/.test(code)) {
+    await ensureNames();
+    const resolved = resolveCode(code);
+    if (!resolved) { toast('请输入6位股票代码或可识别的名称', 'warn'); return; }
+    code = resolved;
+  }
   const hold = Math.max(HOLD_MIN, Math.min(HOLD_MAX, Math.floor(Number($('bt-hold').value) || 5)));
 
   state.params.code = code;
@@ -250,7 +264,7 @@ async function runBacktestFlow(ctx, state) {
 
   // 图表先清理
   if (state.chart) { state.chart.dispose(); state.chart = null; }
-  resultEl.innerHTML = loadingHTML(`正在拉取 ${code} 日K线并统计信号表现…`, '200px');
+  resultEl.innerHTML = loadingHTML(`正在拉取 ${stockLabel(code)} 日K线并统计信号表现…`, '200px');
 
   try {
     // 拉取较长历史（回验需要足够样本；AxData 按实际可用返回）

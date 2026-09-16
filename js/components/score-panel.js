@@ -5,6 +5,7 @@
  */
 
 import { SCORING_RULES } from '../scoring.js';
+import { stockLabel } from '../names.js';
 import { esc, fmtNum } from '../ui.js';
 
 const CONCLUSION_STYLE = {
@@ -70,10 +71,13 @@ function levelRow(l, cls = '') {
  * 渲染评分面板。
  * @param {HTMLElement} el 容器
  * @param {object|null} state { klines, indicators }（个股视图状态）
- * @param {object} opts { code, feature?, reason? }
+ * @param {object} opts { code, name?, feature?, reason? }（name 缺省时用名称目录补全）
  */
 export function renderScorePanel(el, state, opts = {}) {
   if (!el) return;
+
+  // 标题统一用「名称 代码」；opts.name 已由调用方算好时可直接使用
+  const title = opts.name || stockLabel(opts.code);
 
   // 动态 import 避免循环依赖（scoring.js 不依赖视图）
   import('../scoring.js').then(({ computeScore }) => {
@@ -87,7 +91,7 @@ export function renderScorePanel(el, state, opts = {}) {
       el.innerHTML = `
       <div class="card p-5">
         <h3 class="font-medium text-slate-200 text-sm mb-3 flex items-center gap-1.5">
-          <i class="ri-dashboard-3-line text-indigo-400"></i>时机评分与建议 · ${esc(opts.code || '')}
+          <i class="ri-dashboard-3-line text-indigo-400"></i>时机评分与建议 · ${esc(title)}
         </h3>
         <div class="flex flex-col items-center py-6 text-slate-500 gap-2">
           <i class="ri-indeterminate-circle-line text-3xl"></i>
@@ -106,7 +110,7 @@ export function renderScorePanel(el, state, opts = {}) {
     <div class="card p-5">
       <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
         <h3 class="font-medium text-slate-200 text-sm flex items-center gap-1.5">
-          <i class="ri-dashboard-3-line text-indigo-400"></i>时机评分与框架性建议 · ${esc(opts.code || '')}
+          <i class="ri-dashboard-3-line text-indigo-400"></i>时机评分与框架性建议 · ${esc(title)}
         </h3>
         <button id="btn-rules" class="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1">
           <i class="ri-question-line"></i>查看评分规则

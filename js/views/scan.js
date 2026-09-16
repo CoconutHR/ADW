@@ -13,6 +13,7 @@ import { detectSignals, recentSignals, summarizeSignals } from '../signal.js';
 import { computeScore } from '../scoring.js';
 import { createScheduler } from '../scheduler.js';
 import { getWatchlist, addWatch, removeWatch, saveWatchlist } from '../store.js';
+import { ensureNames, getName, searchStocks, resolveCode, stockLabel, stockLabelHTML, backfillWatchNames, namesReady } from '../names.js';
 import { toast, loadingHTML, emptyHTML, esc, fmtNum, pctSpan, signalBadge } from '../ui.js';
 
 const CONCLUSION_CLS = {
@@ -39,8 +40,9 @@ export function registerScanView(registerRoute) {
           </h3>
           <div class="flex items-center gap-2">
             <div class="relative">
-              <input id="watch-input" class="field w-40 pl-8 !py-1.5 text-xs font-mono" placeholder="代码 / 代码,名称" spellcheck="false">
-              <i class="ri-add-line absolute left-2 top-1/2 -translate-y-1/2 text-slate-500 text-xs"></i>
+              <input id="watch-input" class="field w-56 pl-8 !py-1.5 text-xs" placeholder="代码或名称，如 600519 / 茅台" autocomplete="off" spellcheck="false">
+              <i class="ri-search-line absolute left-2 top-1/2 -translate-y-1/2 text-slate-500 text-xs"></i>
+              <div id="watch-suggest" class="hidden absolute z-30 left-0 right-0 mt-1 max-h-64 overflow-y-auto rounded-lg border border-slate-700 bg-slate-900 shadow-xl"></div>
             </div>
             <button id="watch-add" class="btn btn-ghost !py-1.5 text-xs">添加</button>
           </div>
@@ -97,6 +99,13 @@ export function registerScanView(registerRoute) {
 
     renderWatchList(ctx);
     bindEvents(ctx);
+
+    // 名称目录就绪后补全已有自选（早期按代码添加时名称=代码）并重绘
+    ensureNames().then(() => {
+      const list = getWatchlist();
+      if (backfillWatchNames(list)) saveWatchlist(list);
+      renderWatchList(ctx);
+    });
   });
 }
 
@@ -109,14 +118,13 @@ function renderWatchList(ctx) {
   countEl.textContent = `· ${list.length} 只`;
 
   if (!list.length) {
-    listEl.innerHTML = `<p class="text-xs text-slate-500">暂无自选股，输入格式：<code class="text-indigo-300">600519</code> 或 <code class="text-indigo-300">600519,贵州茅台</code></p>`;
+    listEl.innerHTML = `<p class="text-xs text-slate-500">暂无自选股，可输入代码或名称（如 <code class="text-indigo-300">600519</code>、<code class="text-indigo-300">茅台</code>）后点添加</p>`;
     return;
   }
 
   listEl.innerHTML = list.map(w => `
     <div class="group flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-900/60 pl-2.5 pr-1.5 py-1.5 text-xs hover:border-slate-600 transition-colors">
-      <a href="#/stock/${esc(w.code)}" class="text-slate-200 hover:text-indigo-300">${esc(w.name || w.code)}</a>
-      <span class="text-slate-600 font-mono text-[10px]">${esc(w.code)}</span>
+      ${stockLabelHTML(w.code, w.name, { nameCls: 'text-slate-200' })}
       <button data-remove="${esc(w.code)}" class="text-slate-600 hover:text-rose-400 transition-colors" title="移除">
         <i class="ri-close-line"></i>
       </button>
@@ -127,25 +135,104 @@ function renderWatchList(ctx) {
 function bindEvents(ctx) {
   const $ = (id) => ctx.container.querySelector('#' + id);
 
-  // 添加自选
-  const doAdd = () => {
-    const raw = $('watch-input').value.trim();
-    if (!raw) return;
-    // 支持格式：600519 / 600519,贵州茅台 / 600519 贵州茅台
-    const m = raw.match(/^(\d{6})\s*[,，\s]?\s*(.*)$/);
-    if (!m) { toast('请输入6位数字代码', 'warn'); return; }
-    const code = m[1];
-    const name = m[2] ? m[2].trim() : code;
-    if (addWatch(code, name)) {
-      toast(`已添加自选：${name}`, 'success');
+  // ---- 添加自选：代码 / 名称 搜索 + 候选下拉 ----
+  const box = $('watch-suggest');
+  let timer = null;
+  let items = [];
+  let active = -1;
+
+  const hideSuggest = () => { box.classList.add('hidden'); box.innerHTML = ''; items = []; active = -1; };
+
+  const renderSuggest = (list) => {
+    items = list;
+    active = list.length ? 0 : -1;
+    if (!list.length) { hideSuggest(); return; }
+    box.innerHTML = list.map((s, i) => `
+      <div data-idx="${i}" class="px-2.5 py-1.5 text-xs cursor-pointer flex items-center justify-between gap-2 ${i === 0 ? 'bg-slate-800' : 'hover:bg-slate-800'}">
+        <span class="text-slate-200 truncate">${esc(s.name)}</span>
+        <span class="text-slate-500 font-mono text-[10px] shrink-0">${esc(s.code)}</span>
+      </div>`).join('');
+    box.classList.remove('hidden');
+  };
+
+  const updateSuggest = async () => {
+    const q = $('watch-input').value.trim();
+    if (!q) { hideSuggest(); return; }
+    await ensureNames();
+    const list = searchStocks(q, 10);
+    // 6 位代码即使未被目录收录（新股/退市）也允许直接添加
+    if (/^\d{6}$/.test(q) && !list.some(x => x.code === q)) {
+      list.unshift({ code: q, name: getName(q) || '（目录未收录）' });
+    }
+    if (!list.length) {
+      box.innerHTML = `<div class="px-2.5 py-2 text-xs text-slate-500">未找到匹配项${namesReady() ? '' : '（名称目录加载中，可稍后重试）'}</div>`;
+      box.classList.remove('hidden');
+      items = []; active = -1;
+      return;
+    }
+    renderSuggest(list);
+  };
+
+  const addByCode = (code, name) => {
+    const nm = (name && name !== '（目录未收录）') ? name : (getName(code) || code);
+    if (addWatch(code, nm)) {
+      toast(`已添加自选：${stockLabel(code, nm)}`, 'success');
       $('watch-input').value = '';
+      hideSuggest();
       renderWatchList(ctx);
     } else {
       toast('该股票已在自选中', 'info');
     }
   };
+
+  const doAdd = async () => {
+    const raw = $('watch-input').value.trim();
+    if (!raw) return;
+    // 兼容手工格式：600519 / 600519,贵州茅台 / 600519 贵州茅台
+    const m = raw.match(/^(\d{6})\s*[,，\s]?\s*(.*)$/);
+    if (m) { addByCode(m[1], m[2] ? m[2].trim() : getName(m[1])); return; }
+    // 名称搜索：唯一命中直接加入，多个命中取首条
+    await ensureNames();
+    const code = resolveCode(raw);
+    if (!code) { toast(`未找到「${raw}」，可改用 6 位代码添加`, 'warn'); return; }
+    addByCode(code, getName(code));
+  };
+
   $('watch-add').addEventListener('click', doAdd);
-  $('watch-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') doAdd(); });
+  $('watch-input').addEventListener('input', () => {
+    clearTimeout(timer);
+    timer = setTimeout(updateSuggest, 120);
+  });
+  $('watch-input').addEventListener('focus', updateSuggest);
+  $('watch-input').addEventListener('blur', () => setTimeout(hideSuggest, 160));
+  $('watch-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { hideSuggest(); return; }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      if (!items.length) return;
+      e.preventDefault();
+      active = e.key === 'ArrowDown'
+        ? Math.min(items.length - 1, active + 1)
+        : Math.max(0, active - 1);
+      box.querySelectorAll('[data-idx]').forEach(el => {
+        el.className = Number(el.dataset.idx) === active
+          ? 'px-2.5 py-1.5 text-xs cursor-pointer flex items-center justify-between gap-2 bg-slate-800'
+          : 'px-2.5 py-1.5 text-xs cursor-pointer flex items-center justify-between gap-2 hover:bg-slate-800';
+      });
+      return;
+    }
+    if (e.key === 'Enter') {
+      if (items.length && active >= 0) addByCode(items[active].code, items[active].name);
+      else doAdd();
+    }
+  });
+  // mousedown 早于 blur，保证点击候选项不会被隐藏抢先
+  box.addEventListener('mousedown', (e) => {
+    const row = e.target.closest('[data-idx]');
+    if (!row) return;
+    e.preventDefault();
+    const s = items[Number(row.dataset.idx)];
+    if (s) addByCode(s.code, s.name);
+  });
 
   // 移除自选（事件委托）
   ctx.container.querySelector('#watch-list').addEventListener('click', (e) => {
@@ -221,7 +308,7 @@ async function startScan(ctx) {
 
     return {
       code: item.code,
-      name: snapshot?.name || item.name || item.code,
+      name: snapshot?.name || (item.name !== item.code ? item.name : '') || getName(item.code) || item.code,
       pct,
       score: score.ok ? score : null,
       conclusion: score.ok ? score.conclusion : null,
@@ -299,16 +386,14 @@ function renderResultTable(ctx) {
       ${rows.map(r => {
         if (r.error) {
           return `<tr class="row-hover">
-            <td class="py-2.5 pr-3"><a href="#/stock/${esc(r.code)}" class="text-slate-300 hover:text-indigo-300">${esc(r.name || r.code)}</a>
-              <span class="text-slate-600 font-mono text-[10px] ml-1">${esc(r.code)}</span></td>
+            <td class="py-2.5 pr-3">${stockLabelHTML(r.code, r.name, { nameCls: 'text-slate-300' })}</td>
             <td colspan="5" class="py-2.5 text-rose-400/80 text-[11px]"><i class="ri-error-warning-line"></i> ${esc(r.error.message || '扫描失败')}</td>
           </tr>`;
         }
         const cs = r.conclusion ? CONCLUSION_CLS[r.conclusion] : '';
         return `<tr class="row-hover cursor-pointer" data-goto="${esc(r.code)}">
           <td class="py-2.5 pr-3">
-            <a href="#/stock/${esc(r.code)}" class="text-slate-200 hover:text-indigo-300 font-medium">${esc(r.name || r.code)}</a>
-            <span class="text-slate-600 font-mono text-[10px] ml-1">${esc(r.code)}</span>
+            ${stockLabelHTML(r.code, r.name, { nameCls: 'text-slate-200 font-medium' })}
           </td>
           <td class="py-2.5 pr-3 text-right">${pctSpan(r.pct)}</td>
           <td class="py-2.5 pr-3 text-right tabular font-bold ${r.score?.composite >= 60 ? 'text-rise' : r.score?.composite <= 40 ? 'text-fall' : 'text-slate-300'}">${r.score ? fmtNum(r.score.composite, 1) : '--'}</td>
