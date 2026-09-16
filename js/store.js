@@ -4,7 +4,7 @@
  */
 
 /** 面板版本：配置页徽标与控制台启动日志展示，用于核验浏览器运行的代码是否为最新 */
-export const APP_VERSION = 'v1.3.0';
+export const APP_VERSION = 'v1.3.1';
 
 const PREFIX = 'axpanel:';
 const KEY_CONFIG = `${PREFIX}config`;
